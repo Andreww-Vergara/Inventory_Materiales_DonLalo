@@ -1,0 +1,358 @@
+-- SCRIPT SQL PARA CREACIÓN DE BASE DE DATOS 'MATERIALES_DON_LALO'
+
+-- 1. CONFIGURACIÓN - BASE DE DATOS
+---------------------------------------------------------------------
+CREATE DATABASE IF NOT EXISTS materiales_don_lalo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE materiales_don_lalo;
+
+-- Desactiva temporalmente revisión de claves foráneas para poder eliminar y crear tablas en cualquier orden
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- 2. ELIMINACIÓN DE TABLAS
+---------------------------------------------------------------------
+DROP TABLE IF EXISTS Payment;
+DROP TABLE IF EXISTS Info_Sale;
+DROP TABLE IF EXISTS Info_Purchase;
+DROP TABLE IF EXISTS Movement;
+DROP TABLE IF EXISTS Sale;
+DROP TABLE IF EXISTS Purchase;
+DROP TABLE IF EXISTS Product;
+DROP TABLE IF EXISTS Category;
+DROP TABLE IF EXISTS Supplier;
+DROP TABLE IF EXISTS Customer;
+DROP TABLE IF EXISTS Address;
+DROP TABLE IF EXISTS User;
+
+-- 3. CREACIÓN DE TABLAS BASE (sin FK)
+---------------------------------------------------------------------
+
+-- TABLA: Usuarios (personal de Don Lalo)
+CREATE TABLE User (
+    ID_user INT AUTO_INCREMENT PRIMARY KEY NOT NULL,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    rol VARCHAR(50),
+    hire_date DATE,
+    phone VARCHAR(20),
+    mail VARCHAR(100) UNIQUE,
+    password VARCHAR(50) NOT NULL
+);
+
+-- TABLA: Direcciones (Domicilios de clientes)
+CREATE TABLE Address (
+    ID_address INT AUTO_INCREMENT PRIMARY KEY,
+    street VARCHAR(100) NOT NULL,
+    number VARCHAR(10),
+    neighbourhood VARCHAR(100),
+    city VARCHAR(50) NOT NULL,
+    zip_code VARCHAR(10)
+);
+
+-- TABLA: Categorias (Clasificación de productos)
+CREATE TABLE Category (
+    ID_category INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description TEXT
+);
+
+-- TABLA: Proveedores (Empresas o personas a quienes se les compra material)
+CREATE TABLE Supplier (
+    ID_supplier INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    city VARCHAR(50),
+    phone VARCHAR(20),
+    mail VARCHAR(100) UNIQUE
+);
+
+-- 4. CREACIÓN DE TABLAS INTERMEDIAS (Con FK)
+---------------------------------------------------------------------
+
+-- TABLA: Clientes (Compradores en Don Lalo)
+CREATE TABLE Customer (
+    ID_customer INT AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50),
+    mail VARCHAR(100) UNIQUE,
+    phone VARCHAR(20),
+    password VARCHAR(50),
+    
+    -- FK a Direcciones: Dirección principal del cliente
+    ID_address INT,
+    FOREIGN KEY (ID_address) REFERENCES Address(ID_address)
+);
+
+-- TABLA: Productos (Inventario de los materiales)
+CREATE TABLE Product (
+    ID_product INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT,
+    price DECIMAL(10, 2) NOT NULL,
+    stock INT NOT NULL DEFAULT 0,
+    unit_measure VARCHAR(25),    -- FK a Categorias: Clasificación del producto
+    ID_category INT NOT NULL,
+    FOREIGN KEY (ID_category) REFERENCES Category(ID_category)
+);
+
+-- 5. CREACIÓN DE TABLAS DE TRANSACCIÓN (Encabezado)
+---------------------------------------------------------------------
+
+-- TABLA: Ventas (Registro de transacciones de venta)
+CREATE TABLE Sale (
+    ID_sale INT AUTO_INCREMENT PRIMARY KEY,
+    date DATE NOT NULL,
+    status VARCHAR(50),
+    total DECIMAL(10, 2) NOT NULL,
+    
+    -- FK a Clientes: Quién compró
+    ID_customer INT NOT NULL,
+    -- A CONSIDERAR: User que realizó la venta
+    ID_user INT, 
+    
+    FOREIGN KEY (ID_customer) REFERENCES Customer(ID_customer),
+    FOREIGN KEY (ID_user) REFERENCES User(ID_user)
+);
+
+-- TABLA: Compras (Registro de compra de materiales a proveedores)
+CREATE TABLE Purchase (
+    ID_purchase INT AUTO_INCREMENT PRIMARY KEY,
+    date DATE NOT NULL,
+    status VARCHAR(50),
+    total DECIMAL(10, 2) NOT NULL,
+    
+    -- FK a Proveedores: A quién se compró
+    ID_supplier INT NOT NULL,
+    -- A CONSIDERAR: User que realizó la compra
+    ID_user INT, 
+
+    FOREIGN KEY (ID_supplier) REFERENCES Supplier(ID_supplier),
+    FOREIGN KEY (ID_user) REFERENCES User(ID_user)
+);
+
+-- TABLA: Pagos (Registro de pagos en Ventas)
+CREATE TABLE Payment (
+    ID_payment INT AUTO_INCREMENT PRIMARY KEY,
+    amount DECIMAL(10, 2) NOT NULL,
+    mail VARCHAR(100), -- Correo de confirmación
+    date_payment DATETIME DEFAULT CURRENT_TIMESTAMP,
+    -- Si hubiera factura, aquí se pide RFC
+    
+    -- FK a Ventas: El pago se asocia a una venta específica
+    ID_Sale INT NOT NULL,
+    FOREIGN KEY (ID_sale) REFERENCES Sale(ID_sale)
+);
+
+-- 6. CREACIÓN DE TABLAS DE DETALLE (Relaciones Muchos-a-Muchos)
+---------------------------------------------------------------------
+
+-- TABLA: Detalle_Venta (Ítems en una venta)
+CREATE TABLE Info_Sale (
+    amount INT NOT NULL,
+    unit_cost DECIMAL(10, 2) NOT NULL,
+    total DECIMAL(10, 2) NOT NULL,
+    
+    
+    -- FK a Ventas: A qué venta pertenece
+    ID_sale INT NOT NULL,
+    -- FK a Productos: Qué producto se vendió
+    ID_product INT NOT NULL,
+    
+    FOREIGN KEY (ID_sale) REFERENCES Sale(ID_sale),
+    FOREIGN KEY (ID_product) REFERENCES Product(ID_product),
+    
+    -- DEFINICIÓN DE LA LLAVE PRIMARIA COMPUESTA
+    PRIMARY KEY (ID_sale, ID_product)
+);
+
+-- TABLA: Detalle_Compra (Ítems en una compra)
+CREATE TABLE Info_Purchase (
+    amount INT NOT NULL,
+    unit_cost DECIMAL(10, 2) NOT NULL,
+    total DECIMAL(10, 2) NOT NULL,
+    
+    -- FK a Compras: A qué compra pertenece
+    ID_purchase INT NOT NULL,
+    -- FK a Productos: Qué producto se compró
+    ID_product INT NOT NULL,
+    
+    FOREIGN KEY (ID_purchase) REFERENCES Purchase(ID_purchase),
+    FOREIGN KEY (ID_product) REFERENCES Product(ID_product),
+    -- DEFINICIÓN DE LA LLAVE PRIMARIA COMPUESTA
+    PRIMARY KEY (ID_purchase, ID_product)
+);
+
+-- TABLA: Movimientos (Trazabilidad de entradas y salidas de inventario)
+CREATE TABLE Movement (
+    ID_movement INT AUTO_INCREMENT PRIMARY KEY,
+    tipe VARCHAR(50) NOT NULL, -- E.g., 'Entrada', 'Salida', 'Ajuste'
+    reason VARCHAR(255),
+    amount INT NOT NULL,
+    date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    -- FK a Productos: El producto afectado
+    ID_product INT NOT NULL,
+    
+    -- FKs OPCIONALES: Vinculan el movimiento a la transacción que lo originó
+    ID_sale INT NULL,
+    ID_purchase INT NULL,
+    
+    FOREIGN KEY (ID_product) REFERENCES Product(ID_product),
+    FOREIGN KEY (ID_sale) REFERENCES Sale(ID_sale),
+    FOREIGN KEY (ID_purchase) REFERENCES Purchase(ID_purchase)
+);
+
+-- 7. CONFIGURACIÓN FINAL
+---------------------------------------------------------------------
+-- Volver a activar la revisión de claves foráneas
+SET FOREIGN_KEY_CHECKS = 1;
+
+INSERT INTO category (name ,description)
+VALUES 
+('cement and mortar','Essential building and finishing materials, including premixed cements, mortars, and adhesives. Ideal for structures, walls, foundations, and general masonry work.'),
+('sand and aggregates', 'Natural aggregates such as sand, gravel, and crushed stone for concrete mixes, fills, and leveling. A fundamental base for structural work and site preparation.'),
+('steel and rod', 'Structural metal products such as rebar, mesh, and profiles. Designed to reinforce foundations, slabs, and walls, providing strength and stability to construction.'),
+('brick and block', 'Components for building walls and partitions, including red brick, hollow and solid blocks. They offer durability, insulation, and ease of installation on site.'),
+('wood', 'Boards, beams, and related products used for formwork, lightweight structures, roofing, and finishes. Versatile and practical material for multiple applications in construction and carpentry.'),
+('plumbing', 'Pipes, fittings, and accessories for plumbing and sanitary installations. Essential components for drinking water, drainage, and internal distribution systems.'),
+('electrical equipment', 'Cables, switches, conduits, and fittings for residential, commercial, and industrial electrical installations. Safe and reliable products for power transmission and protection.'),
+('coating and painting', 'Solutions for protecting, decorating, and enhancing surfaces, including paints, waterproofing, sealants, and specialty finishes. Ideal for interior and exterior use.'),
+('tools and equipment', 'Hand and power tools for construction, maintenance, and repair work. Durable equipment that facilitates performance and precision on the job site.'),
+('floor and tile', 'Ceramic and porcelain tiles for interior and exterior use. Designed to provide aesthetic appeal, durability, and easy cleaning in residential and commercial areas.'),
+('screws','Screws, nails, dowels, and fasteners for assemblies, installations, and structures. Essential elements for securing and joining materials in all types of projects.'),
+('others','Complementary and general-purpose products, from small accessories to construction support materials. A flexible category that covers essential everyday items.');
+
+
+INSERT INTO product (`name`, `description`, `price`, `stock`, `unit_measure`, `ID_category`)
+ VALUES 
+('Grey cement 50kg', 'General purpose cement for structures and walls, providing strength and durability in professional masonry work.', '185.0', '1000', 'sack', '1'),
+('White cement 25kg', 'Fine cement ideal for repairs and decorative finishes that require a clean, uniform tone and excellent adhesion.', '160.0', '1000', 'sack', '1'),
+('Prepared mortar 40kg', 'Ready-to-use mix for joining blocks and bricks with excellent consistency and performance on interior and exterior walls.', '110.0', '1000', 'sack', '1'),
+('40kg Plaster', 'Interior plaster that allows for smooth and uniform finishes on walls and ceilings before applying paint or sealant.', '95.0', '1000', 'sack', '1'),
+('Adhesive for blocks', 'Strong adhesive for joining blocks more firmly and quickly, ideal for rough construction work.', '140.0', '1000', 'sack', '1'),
+('White tile adhesive', 'Adhesive designed for installing ceramic tiles and coverings, providing excellent adhesion and durability.', '130.0', '1000', 'sack', '1'),
+('Grey tile adhesive', 'Versatile adhesive for ceramic floors and walls that offers firm grip and high load capacity.', '125.0', '1000', 'sack', '1'),
+('Fine stucco', 'Mixture for smooth interior finishes providing a uniform surface to receive paint or coating.', '90.0', '1000', 'sack', '1'),
+('Reinforced mortar', 'High-strength mortar recommended for structural walls that require greater firmness and durability.', '135.0', '1000', 'sack', '1'),
+('Cementitious sealant', 'Sealant for joints and porous surfaces, improving the impermeability and resistance of the treated area.', '85.0', '1000', 'kg', '1'),
+('Fine sand', 'Clean and uniform sand ideal for finishes, plasters and mixtures where a smooth and precise texture is needed.', '320.0', '1000', 'm³', '2'),
+('Coarse sand', 'Sand for concrete and mortar mixes that offers excellent structural strength and easy handling.', '300.0', '1000', 'm³', '2'),
+('3/4 Gravel', 'Coarse gravel used for structural concrete, providing stability and firmness in foundations and slabs.', '420.0', '1000', 'm³', '2'),
+('1/2 Gravel', 'Versatile aggregate for floors, foundations and fills providing structural stability in different jobs.', '400.0', '1000', 'm³', '2'),
+('Crushed stone', 'Ideal material for pavement bases, providing high compaction and resistant support for traffic.', '380.0', '1000', 'm³', '2'),
+('Tepetate', 'Economical fill for leveling and preparing land before major construction.', '250.0', '1000', 'm³', '2'),
+('Hydraulic base', 'Compacted aggregate mix ideal for pavements and roads requiring durable support.', '430.0', '1000', 'm³', '2'),
+('Hydraulic subbase', 'Structural layer for pavements that improves the overall strength of the ground and distributes loads.', '360.0', '1000', 'm³', '2'),
+('Washed sand', 'Clean sand without impurities, suitable for concrete and work where high purity of material is required.', '350.0', '1000', 'm³', '2'),
+('gravel-sand mixture', 'Ready-to-use combination for preparing simple concretes without the need to select additional proportions.', '410.0', '1000', 'm³', '2'),
+('3/8 Rod', 'High-strength corrugated rebar used for reinforcing walls, slabs, and structural elements.', '145.0', '1000', 'piece', '3'),
+('1/2 Rod', 'Corrugated steel for reinforcing foundations and columns that require greater structural capacity.', '205.0', '1000', 'piece', '3'),
+('Electrowelded mesh', 'Steel mesh ideal for slabs and benches that distributes loads and reinforces surfaces.', '620.0', '1000', 'piece', '3'),
+('Wire rod', 'Malleable steel wire used for tying and additional reinforcement on site.', '980.0', '1000', 'roll', '3'),
+('PTR profile', 'Structural rectangular profile used in frames, metal structures and supports.', '310.0', '1000', 'm', '3'),
+('Steel angle', 'L-shaped metal profile used for blacksmithing, supports and various structures.', '180.0', '1000', 'm', '3'),
+('Steel plate', 'Thick, heavy-duty sheet metal used for manufacturing demanding structural parts and reinforcements.', '950.0', '1000', 'piece', '3'),
+('5/8 Rod', 'Large diameter rod for projects requiring greater load capacity.', '295.0', '1000', 'piece', '3'),
+('Chain-link fence', 'Galvanized netting ideal for perimeter fences, offering security and resistance to the elements.', '780.0', '1000', 'roll', '3'),
+('Sill', 'Flat steel profile used in blacksmithing and reinforcement of metal structures.', '160.0', '1000', 'm', '3'),
+('Hollow block 12x20x40', 'Lightweight and resistant block ideal for partition and structural walls, providing efficient thermal and acoustic insulation in residential and commercial buildings.', '18.0', '1000', 'piece', '4'),
+('Solid block 12x20x40', 'Higher density and strength block, suitable for load-bearing walls and structures that require durability and firmness in their installation.', '22.0', '1000', 'piece', '4'),
+('red annealed partition', 'Traditional building piece that offers excellent adhesion with mortar and high durability, ideal for interior and exterior walls.', '6.0', '1000', 'piece', '4'),
+('Cement partition', 'Durable element for perimeter or structural walls, manufactured with high-quality cement for reliable performance.', '14.0', '1000', 'piece', '4'),
+('Thermal block', 'Block designed to improve the thermal insulation of buildings, reducing heat transfer and increasing interior comfort.', '28.0', '1000', 'piece', '4'),
+('Firebrick', 'Special brick that withstands high temperatures, ideal for ovens, fireplaces and areas exposed to extreme heat.', '35.0', '1000', 'piece', '4'),
+('Concrete slab', 'Elongated piece used for lightweight roofs and economical construction systems that require good strength.', '42.0', '1000', 'piece', '4'),
+('Lightweight hollow block', 'Economical and easy-to-handle block, ideal for partition walls without high structural requirements.', '16.0', '1000', 'piece', '4'),
+('Handmade brick', 'Decorative brick with a rustic finish, used in facades, interior walls and aesthetic architectural details.', '10.0', '1000', 'piece', '4'),
+('Architectural block', 'Textured block with decorative finish for facades or exterior walls, combining aesthetics and structural resistance.', '32.0', '1000', 'piece', '4'),
+('Pine board 1x12', 'Lightweight and versatile wood ideal for finishes, furniture and formwork, offering ease of cutting and excellent workability.', '75.0', '1000', 'piece', '5'),
+('12mm plywood', 'Durable sheet made of layers of wood, suitable for furniture, light structures and flat surfaces indoors.', '260.0', '1000', 'piece', '5'),
+('Pine pole', 'Structural element used for roofing and temporary supports on construction sites, resistant and reliable.', '95.0', '1000', 'piece', '5'),
+('MDF wood', 'Fiberboard panel with a smooth surface, ideal for furniture, doors and detailed interior finishes.', '220.0', '1000', 'piece', '5'),
+('Pine beam', 'Structural timber used in roofs and frames, providing rigidity and durability in residential projects.', '110.0', '1000', 'piece', '5'),
+('Wooden strip', 'Thin pieces used for frames, supports and decorative finishes in woodworking.', '25.0', '1000', 'piece', '5'),
+('OSB 11mm', 'Economical and resistant panel used in walls, roofs and floors as structural support.', '210.0', '1000', 'piece', '5'),
+('Wooden plank', 'Interior floor covering that provides a warm and elegant appearance.', '180.0', '1000', 'm²', '5'),
+('Treated wooden post', 'Treated wood to resist moisture and pests, ideal for exteriors and fences.', '140.0', '1000', 'piece', '5'),
+('Oak wood', 'High-quality hardwood used for fine furniture and elegant interior finishes.', '350.0', '1000', 'piece', '5'),
+('1'''' PVC hydraulic pipe', 'Lightweight and durable pipe ideal for domestic plumbing installations, offering constant flow and easy assembly.', '45.0', '1000', 'm', '6'),
+('90° PVC Elbow 1''''', 'Connection to redirect hydraulic pipes, guaranteeing a firm and durable seal in installations.', '12.0', '1000', 'piece', '6'),
+('1'''' Ball Valve', 'Heavy-duty valve for controlling water flow in main lines or branch lines.', '85.0', '1000', 'piece', '6'),
+('1/2" CPVC Pipe', 'Pipe designed for hot water with high thermal resistance and long durability.', '38.0', '1000', 'm', '6'),
+('1/2" PVC Couplings', 'Connections used to join sections of pipe, ensuring a firm and leak-free coupling.', '8.0', '1000', 'piece', '6'),
+('P-trap for sink', 'Sanitary accessory that prevents the return of odors while maintaining an adequate flow.', '55.0', '1000', 'piece', '6'),
+('Single mixer tap', 'Functional taps for washbasins, offering precise control of water flow and temperature.', '220.0', '1000', 'piece', '6'),
+('1/2" Flexible Hose', 'Reinforced hose for connecting toilets and sinks, resistant to pressure and torsion.', '40.0', '1000', 'piece', '6'),
+('1" check valve', 'Device that prevents water backflow in hydraulic systems, protecting pumps and pipes.', '95.0', '1000', 'piece', '6'),
+('1/2" CPVC Elbow', 'Hot water pipe connection that guarantees durability and high thermal resistance.', '14.0', '1000', 'piece', '6'),
+('THW 12 cable', 'General purpose electrical cable resistant to moisture and heat, ideal for residential and commercial installations.', '18.0', '1000', 'm', '7'),
+('Single switch', 'Practical and durable switch for controlling indoor or outdoor lighting.', '22.0', '1000', 'piece', '7'),
+('Double polarized contact', 'Safe electrical outlet for common equipment in homes and offices, with good resistance.', '28.0', '1000', 'piece', '7'),
+('1" conduit pipe', 'Pipe for protecting electrical wiring, impact resistant and suitable for visible or hidden installations.', '42.0', '1000', 'm', '7'),
+('1" Conduit Elbow', 'Accessory that allows redirecting conduit pipe without compromising the protection of the wiring.', '18.0', '1000', 'piece', '7'),
+('Chalupa box', 'Electrical box to house switches and outlets, designed for recessed installations in walls.', '12.0', '1000', 'piece', '7'),
+('Thermomagnetic circuit breaker', 'Electrical protection against overloads and short circuits, essential in electrical panels and homes.', '95.0', '1000', 'piece', '7'),
+('10W LED spotlight', 'Efficient lamp that reduces electricity consumption by providing bright and uniform lighting.', '35.0', '1000', 'piece', '7'),
+('Porcelain socket', 'Durable base for spotlights, ideal for areas requiring greater thermal and mechanical durability.', '20.0', '1000', 'piece', '7'),
+('Electrical tape', 'Durable tape for insulating electrical connections, ensuring safety and protection.', '10.0', '1000', 'piece', '7'),
+('Vinyl paint 19L', 'Washable interior paint with excellent performance, covering surfaces with a uniform and durable finish.', '780.0', '1000', 'bucket', '8'),
+('Synthetic enamel 1L', 'Durable paint for metal and wood, leaving a glossy and highly durable finish.', '95.0', '1000', 'l', '8'),
+('5-year waterproofing', 'Product that protects roofs against moisture and leaks while maintaining flexibility and adhesion.', '620.0', '1000', 'bucket', '8'),
+('Vinyl sealant 1L', 'Wall conditioner that improves the adhesion and performance of subsequent paints and coatings.', '55.0', '1000', 'l', '8'),
+('Textured acrylic', 'Decorative textured coating, ideal for exterior and interior walls that require a durable aesthetic finish.', '420.0', '1000', 'bucket', '8'),
+('Professional pasta 25kg', 'Mixture to repair walls and achieve smooth surfaces before painting.', '180.0', '1000', 'sack', '8'),
+('Paint remover', 'Chemical product that facilitates the removal of old coatings without damaging the base surface.', '90.0', '1000', 'l', '8'),
+('Clear varnish', 'Protective coating for wood, providing shine and resistance to moisture and wear.', '110.0', '1000', 'l', '8'),
+('Anti-corrosive primer', 'Base paint that protects metal surfaces against oxidation and improves the adhesion of the final finish.', '130.0', '1000', 'l', '8'),
+('Membrane for waterproofing', 'Reinforcement for acrylic waterproofing, increasing durability and resistance on roofs.', '65.0', '1000', 'm', '8'),
+('Carpenter''s hammer', 'Basic tool for hammering and removing nails, resistant and ergonomic for continuous use on construction sites.', '110.0', '1000', 'piece', '9'),
+('Electric drill', 'Powerful equipment for drilling multiple materials, offering variable speed and high precision.', '950.0', '1000', 'piece', '9'),
+('5m tape measure', 'Durable measuring tape ideal for precise measurements in construction and remodeling work.', '65.0', '1000', 'piece', '9'),
+('Adjustable wrench', 'Versatile tool for adjusting nuts and bolts of different sizes with a robust mechanism.', '120.0', '1000', 'piece', '9'),
+('10lb Hammer', 'Heavy-duty tool ideal for demolitions and heavy impacts on construction sites.', '260.0', '1000', 'piece', '9'),
+('Square shovel', 'Tool for loading loose materials such as sand and gravel, resistant to heavy use.', '180.0', '1000', 'piece', '9'),
+('6ft³ Wheelbarrow', 'Equipment for transporting construction materials with reinforced structure and heavy-duty wheel.', '980.0', '1000', 'piece', '9'),
+('Locking pliers', 'Tool for firmly holding parts, useful in repairs and precision work.', '85.0', '1000', 'piece', '9'),
+('Tile cutter', 'Tool designed for precise cuts in ceramic and porcelain, ideal for professional installers.', '670.0', '1000', 'piece', '9'),
+('Angle grinder', 'Electric tool for cutting and grinding metal, stone and concrete with interchangeable discs.', '890.0', '1000', 'piece', '9'),
+('33x33 ceramic tile', 'Durable and decorative indoor flooring, easy to clean and available in multiple modern designs.', '160.0', '1000', 'm²', '10'),
+('60x60 porcelain tile', 'Elegant, high-strength cladding ideal for high-traffic interior areas.', '320.0', '1000', 'm²', '10'),
+('White tile 20x30', 'Classic wall covering for bathrooms and kitchens, easy to clean and keep in perfect condition.', '140.0', '1000', 'm²', '10'),
+('Venetian mosaic', 'Small decorative pieces for details on walls and bathrooms providing elegant finishes.', '420.0', '1000', 'm²', '10'),
+('Ceramic strip', 'Wood-look flooring for interiors, providing a natural appearance and superior resistance.', '280.0', '1000', 'm²', '10'),
+('Ceramic baseboard', 'Complementary piece to protect walls at the base of the floor with a uniform finish.', '40.0', '1000', 'piece', '10'),
+('Non-slip floor', 'Outdoor flooring with a textured surface that reduces the risk of slipping in wet or sloped areas.', '260.0', '1000', 'm²', '10'),
+('Decorative tile', 'Modern design wall covering ideal for accent walls or interior decorative areas.', '210.0', '1000', 'm²', '10'),
+('Rustic floor', 'Natural textured cladding ideal for terraces and outdoor areas.', '190.0', '1000', 'm²', '10'),
+('Economy tile', 'Affordable and durable flooring with a simple finish suitable for large and economical spaces.', '120.0', '1000', 'm²', '10'),
+('Drill point screw', 'Self-tapping screw for metal that allows drilling and fixing in a single quick and safe operation.', '1.2', '1000', 'piece', '11'),
+('Drywall screw', 'Screw for fixing drywall panels offering firm hold without damaging the surface.', '1.0', '1000', 'piece', '11'),
+('Plastic dowel', 'Wall mounting element that ensures screws with strength and stability.', '0.8', '1000', 'piece', '11'),
+('10 gauge nail', 'Heavy-duty nail for carpentry and general construction providing long-lasting hold.', '0.5', '1000', 'piece', '11'),
+('Hex screw', 'High-strength screw used in metal structures and machinery.', '2.5', '1000', 'piece', '11'),
+('Hex nut', 'Fastening element that securely holds screws and rods.', '0.6', '1000', 'piece', '11'),
+('Smooth washer', 'Washer that distributes pressure on fixings, preventing damage to surfaces.', '0.4', '1000', 'piece', '11'),
+('Wood screw', 'Screw designed for clean penetration into wood, ensuring a strong bond.', '0.9', '1000', 'piece', '11'),
+('Metal dowel', 'Metal anchor for fixing in concrete ensuring maximum firmness.', '3.2', '1000', 'piece', '11'),
+('Screw for sheet', 'Screw with washer that secures metal sheets, preventing leaks and vibrations.', '1.4', '1000', 'piece', '11'),
+('Work gloves', 'Protective hand equipment that offers grip and resistance in construction or repair activities.', '28.0', '1000', 'piece', '12'),
+('Masking tape', 'Multipurpose tape for edge protection and painting work, easy to apply and remove.', '22.0', '1000', 'piece', '12'),
+('Aluminum ladder', 'Lightweight and sturdy ladder ideal for working at heights with reliable stability and safety.', '820.0', '1000', 'piece', '12'),
+('Plastic tarpaulin', 'Material for covering surfaces and protecting areas against rain, dust or paint.', '65.0', '1000', 'piece', '12'),
+('Industrial face mask', 'Respiratory protection against dust and particles in construction areas.', '8.0', '1000', 'piece', '12'),
+('Manual oiler', 'Tool for applying lubricants to equipment and machinery, preventing premature wear.', '45.0', '1000', 'piece', '12'),
+('Inexpensive measuring tape', 'Basic tool for quick measurement in simple construction or general repair work.', '28.0', '1000', 'piece', '12'),
+('Bubble level', 'Tool for verifying leveling on surfaces, guaranteeing straight and precise finishes.', '90.0', '1000', 'piece', '12'),
+('4inch Brush', 'Durable brush for applying paint or sealants to large surfaces.', '35.0', '1000', 'piece', '12'),
+('Bricklayer''s Guide', 'Accessory to ensure straight alignment on walls and structures during construction.', '55.0', '1000', 'piece', '12');
+
+INSERT INTO supplier (name, city, phone, mail)
+VALUES
+('Hormigones Titan S.A.', 'Ciudad Industrial', '+52 55 1234 5678', 'pedidos@hormigonestitan.com'),
+('Aceros Elite Global', 'Nuevo Laredo, MX', '+52 867 987 6543', 'ventas@aceroselite.net'),
+('Cerámicas Nova Lux', 'Querétaro, MX', '+52 442 555 1010', 'contacto@novaluxceramica.com'),
+('Sistemas de Impermeabilización Zenith', 'San Luis Potosí, MX', '+52 444 333 2020', 'info@zenithsystems.mx'),
+('Maderas Premium del Sur', 'Chiapas, MX', '+52 961 789 0123', 'comercial@maderassur.com'),
+('Concretos de Alta Resistencia', 'Monterrey, MX', '+52 81 2222 3333', 'atencion@concretoalfa.mx'),
+('Materiales Pétreos Rocafuerte', 'Guadalajara, MX', '+52 33 4444 5555', 'ventas@rocafuertepetreos.mx'),
+('Tuberías y Conexiones HydroFlow', 'Puebla, MX', '+52 222 678 9012', 'soporte@hydroflowtubos.com'),
+('Aislantes Térmicos MasterKlima', 'Toluca, MX', '+52 722 890 1234', 'distribuidores@masterklima.com'),
+('Acabados Decorativos Finesse', 'Cancún, MX', '+52 998 567 8901', 'pedidos@acabadosfinesse.com');
